@@ -47,13 +47,48 @@ services:
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
         bench set-config -g chromium_path /usr/bin/chromium-headless-shell;
     environment:
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      REDIS_CACHE: ${REDIS_CACHE:-}
-      REDIS_QUEUE: ${REDIS_QUEUE:-}
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis-cache:6379
+      REDIS_QUEUE: redis-queue:6379
       SOCKETIO_PORT: 9000
-    depends_on: {}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      redis-queue:
+        condition: service_started
     restart: on-failure
+
+  db:
+    image: mariadb:11.8
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123}
+      MARIADB_AUTO_UPGRADE: 1
+    volumes:
+      - db-data:/var/lib/mysql
+
+  redis-cache:
+    image: redis:8.6-alpine
+    restart: unless-stopped
+
+  redis-queue:
+    image: redis:8.6-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-queue-data:/data
 
   backend:
     <<: *backend_defaults
@@ -110,3 +145,5 @@ services:
 # ERPNext requires local assets access (Frappe does not)
 volumes:
   sites:
+  db-data:
+  redis-queue-data:
