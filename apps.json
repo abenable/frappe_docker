@@ -1,14 +1,10 @@
 [
   {
-    "url": "https://github.com/frappe/frappe",
-    "branch": "version-16"
-  },
-  {
     "url": "https://github.com/frappe/erpnext",
-    "branch": "version-16"
+    "branch": "v16.35.0"
   },
   {
     "url": "https://github.com/abenable/lending",
-    "branch": "main"
+    "branch": "v16.5.1"
   }
 ]
