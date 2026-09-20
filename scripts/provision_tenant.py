@@ -8,11 +8,20 @@ Runs INSIDE the backend container, piped via stdin:
 Env vars:
     TENANT              required, subdomain label -> site <TENANT>.<DOMAIN_BASE>
     TENANT_ADMIN_EMAIL  required, first user of the tenant
+    COMPANY_NAME        required, e.g. "Wewole Ltd" (also becomes the workspace label)
+    COMPANY_ABBR        required, e.g. "WL"
+    COUNTRY             required, e.g. "Uganda"
+    CURRENCY            required, e.g. "UGX"
+    TIMEZONE            required, e.g. "Africa/Kampala"
+    FY_START_DATE       optional, default Jan 1 of the current year
+    FY_END_DATE         optional, default Dec 31 of the current year
     TENANT_ADMIN_PW     optional, random if unset
     ADMIN_PW            optional, random if unset
-    DOMAIN_BASE         optional, default lending.byte10x.dev
+    DOMAIN_BASE         optional, default byte10x.dev (single-level subdomain,
+                         matches the Cloudflare Universal SSL wildcard cert)
 """
 
+import datetime
 import json
 import os
 import secrets
@@ -49,7 +58,18 @@ def main():
     if not tenant.replace("-", "").isalnum():
         die("TENANT must be alphanumeric/hyphen only")
 
-    domain_base = os.environ.get("DOMAIN_BASE", "lending.byte10x.dev")
+    company_name = os.environ.get("COMPANY_NAME", "").strip()
+    company_abbr = os.environ.get("COMPANY_ABBR", "").strip()
+    country = os.environ.get("COUNTRY", "").strip()
+    currency = os.environ.get("CURRENCY", "").strip()
+    timezone = os.environ.get("TIMEZONE", "").strip()
+    if not all([company_name, company_abbr, country, currency, timezone]):
+        die("set COMPANY_NAME, COMPANY_ABBR, COUNTRY, CURRENCY, TIMEZONE")
+    this_year = datetime.date.today().year
+    fy_start_date = os.environ.get("FY_START_DATE") or f"{this_year}-01-01"
+    fy_end_date = os.environ.get("FY_END_DATE") or f"{this_year}-12-31"
+
+    domain_base = os.environ.get("DOMAIN_BASE", "byte10x.dev")
     site = f"{tenant}.{domain_base}"
     site_dir = os.path.join(BENCH, "sites", site)
     config_only = os.environ.get("CONFIG_ONLY") == "1"
@@ -88,13 +108,41 @@ def main():
     frappe.init(site=site, sites_path=sites_dir)
     frappe.connect()
     try:
+        frappe.set_user("Administrator")
+        if not frappe.is_setup_complete():
+            print("running setup wizard ...", flush=True)
+            from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
+
+            setup_complete(
+                {
+                    # no "email"/"full_name": passing them makes setup_wizard
+                    # create a NEW User with a System Manager role, which
+                    # would defeat the lending-only lockdown below
+                    "language": "English",
+                    "country": country,
+                    "timezone": timezone,
+                    "currency": currency,
+                    "company_name": company_name,
+                    "company_abbr": company_abbr,
+                    "fy_start_date": fy_start_date,
+                    "fy_end_date": fy_end_date,
+                    "chart_of_accounts": "Standard",
+                    "bank_account": "Bank Account",
+                }
+            )
+            frappe.db.commit()
+
         # db-level update: saving the Single revalidates language/time_zone,
         # which are empty in a raw (non-request) frappe context
         frappe.db.set_value("System Settings", "System Settings", "default_app", "lending")
 
+        # setup wizard re-creates/unhides several standard workspaces, so this
+        # must run after it, not before
         for name in frappe.get_all("Workspace", filters={"public": 1}, pluck="name"):
             if name not in KEEP_WORKSPACES:
                 frappe.db.set_value("Workspace", name, "is_hidden", 1)
+        for name in KEEP_WORKSPACES:
+            frappe.db.set_value("Workspace", name, {"title": company_name, "label": company_name})
 
         user = frappe.get_doc(
             {
