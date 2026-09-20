@@ -202,6 +202,13 @@ def main():
         rename_if_needed("Desktop Icon", LENDING_WORKSPACE, brand_name)
         frappe.db.set_value("Desktop Icon", brand_name, "link", f"/app/{brand_name.lower()}")
 
+        # A THIRD, separate doctype - "Workspace Sidebar" - drives the sidebar
+        # nav tree/header on every non-home desk route (reports, dashboards,
+        # doctype lists under the module). Renaming Workspace/Desktop Icon
+        # alone leaves this one still labeled "Lending" everywhere except the
+        # workspace's own home page.
+        rename_if_needed("Workspace Sidebar", LENDING_WORKSPACE, brand_name)
+
         created_user = not frappe.db.exists("User", admin_email)
         if created_user:
             user = frappe.get_doc(
@@ -240,10 +247,12 @@ def main():
 
         frappe.db.commit()
         frappe.clear_cache()
-        # desktop icon list is cached per-user in redis, independent of the
-        # generic site cache clear above - without this, a user who loaded
-        # /desk before this rename can keep seeing the stale label/icon
+        # desktop icon list AND full bootinfo are each cached per-user in
+        # their own redis hash, independent of the generic site cache clear
+        # above - without this, a user who loaded /desk before this rename
+        # can keep seeing the stale label/icon indefinitely
         frappe.cache.delete_key("desktop_icons")
+        frappe.cache.delete_key("bootinfo")
     finally:
         frappe.destroy()
 
