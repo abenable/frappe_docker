@@ -145,5 +145,9 @@ services:
 # ERPNext requires local assets access (Frappe does not)
 volumes:
   sites:
+  # explicit names: Coolify uses a random compose project name on every deploy,
+  # so unnamed volumes get recreated (and the database wiped) on each redeploy
   db-data:
+    name: yutdmc2fomfnmmzzr5zyjees_db-data
   redis-queue-data:
+    name: frappe-redis-queue-data
