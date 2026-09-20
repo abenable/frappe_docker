@@ -141,8 +141,12 @@ def main():
         for name in frappe.get_all("Workspace", filters={"public": 1}, pluck="name"):
             if name not in KEEP_WORKSPACES:
                 frappe.db.set_value("Workspace", name, "is_hidden", 1)
+        # Workspace.autoname is "field:label", i.e. "label" IS the docname
+        # and what the desk sidebar renders - a plain set_value on "label"
+        # doesn't take effect, this needs a real rename
         for name in KEEP_WORKSPACES:
-            frappe.db.set_value("Workspace", name, {"title": company_name, "label": company_name})
+            frappe.rename_doc("Workspace", name, company_name, force=True)
+            frappe.db.set_value("Workspace", company_name, "title", company_name)
 
         user = frappe.get_doc(
             {
